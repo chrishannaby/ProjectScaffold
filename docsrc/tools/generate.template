@@ -13,15 +13,10 @@ let referenceBinaries = []
 // Web site location for the generated documentation
 let website = "/##ProjectName##"
 
-let githubLink = "##GitUrl##/##GitHome##/##GitName##"
-
 // Specify more information about your project
 let info =
   [ "project-name", "##ProjectName##"
-    "project-author", "##Author##"
-    "project-summary", "##Summary##"
-    "project-github", githubLink
-    "project-nuget", "http://nuget.org/packages/##ProjectName##" ]
+    "project-summary", "##Summary##" ]
 
 // --------------------------------------------------------------------------------------
 // For typical project, no changes are needed below

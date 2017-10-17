@@ -108,9 +108,6 @@ print """
 #
 """
 
-let [<Literal>] defaultGitUrl = "https://github.com"
-let [<Literal>] defaultGitRawUrl = "https://raw.githubusercontent.com"
-
 let normalizeUrl (url : string) = url.TrimEnd('/')
 let promptAndNormalizeFor (normalize : string -> string) = promptFor >> (function | Some e -> Some(normalize e) | e -> e)
 let promptAndNormalizeUrlFor = promptAndNormalizeFor normalizeUrl
@@ -118,13 +115,6 @@ let promptAndNormalizeUrlFor = promptAndNormalizeFor normalizeUrl
 let vars = Dictionary<string,string option>()
 vars.["##ProjectName##"] <- promptForNoSpaces "Project Name (used for solution/project files)"
 vars.["##Summary##"]     <- promptFor "Summary (a short description)"
-vars.["##Description##"] <- promptFor "Description (longer description used by NuGet)"
-vars.["##Author##"]      <- promptFor "Author"
-vars.["##Tags##"]        <- promptFor "Tags (separated by spaces)"
-vars.["##GitUrl##"]      <- promptAndNormalizeUrlFor (sprintf "Github url (leave blank to use \"%s\")" defaultGitUrl)
-vars.["##GitRawUrl##"]   <- promptAndNormalizeUrlFor (sprintf "Github raw url (leave blank to use \"%s\")" defaultGitRawUrl)
-vars.["##GitHome##"]     <- promptFor "Github User or Organization"
-vars.["##GitName##"]     <- promptFor "Github Project Name (leave blank to use Project Name)"
 
 let wantGit     = if inCI 
                     then false
@@ -187,15 +177,8 @@ let replaceContent file =
   |> replace (oldProjectGuid.ToUpperInvariant()) (projectGuid.ToUpperInvariant())
   |> replace (oldTestProjectGuid.ToUpperInvariant()) (testProjectGuid.ToUpperInvariant())
   |> replace solutionTemplateName projectName
-  |> replaceWithVarOrMsg "##Author##" "Author not set"
-  |> replaceWithVarOrMsg "##Description##" "Description not set"
   |> replaceWithVarOrMsg "##Summary##" "Summary not set"
   |> replaceWithVarOrMsg "##ProjectName##" "FSharpSolution"
-  |> replaceWithVarOrMsg "##Tags##" "fsharp"
-  |> replaceWithVarOrMsg "##GitUrl##" defaultGitUrl
-  |> replaceWithVarOrMsg "##GitRawUrl##" defaultGitRawUrl
-  |> replaceWithVarOrMsg "##GitHome##" "[github-user]"
-  |> replaceWithVarOrMsg "##GitName##" projectName
   |> overwrite file
   |> sprintf "%s updated"
 
@@ -222,13 +205,6 @@ let generate templatePath generatedFilePath =
     File.ReadAllLines(templatePath) |> Array.toSeq
     |> replace "##ProjectName##" projectName
     |> replaceWithVarOrMsg "##Summary##" "Project has no summmary; update build.fsx"
-    |> replaceWithVarOrMsg "##Description##" "Project has no description; update build.fsx"
-    |> replaceWithVarOrMsg "##Author##" "Update Author in build.fsx"
-    |> replaceWithVarOrMsg "##Tags##" ""
-    |> replaceWithVarOrMsg "##GitUrl##" defaultGitUrl
-    |> replaceWithVarOrMsg "##GitRawUrl##" defaultGitRawUrl
-    |> replaceWithVarOrMsg "##GitHome##" "Update GitHome in build.fsx"
-    |> replaceWithVarOrMsg "##GitName##" projectName
 
   File.WriteAllLines(generatedFilePath, newContent)
   File.Delete(templatePath)

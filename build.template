@@ -19,8 +19,7 @@ open System.Diagnostics
 
 // Information about the project are used
 //  - for version and project name in generated AssemblyInfo file
-//  - by the generated NuGet package
-//  - to run tests and to publish documentation on GitHub gh-pages
+//  - to run tests
 //  - for documentation, you also need to edit info in "docsrc/tools/generate.fsx"
 
 // The name of the project
@@ -31,16 +30,6 @@ let project = "##ProjectName##"
 // (used as description in AssemblyInfo and as a short summary for NuGet package)
 let summary = "##Summary##"
 
-// Longer description of the project
-// (used as a description for NuGet package; line breaks are automatically cleaned up)
-let description = "##Description##"
-
-// List of author names (for NuGet package)
-let authors = [ "##Author##" ]
-
-// Tags for your project (for NuGet package)
-let tags = "##Tags##"
-
 // File system information
 let solutionFile  = "##ProjectName##.sln"
 
@@ -49,17 +38,6 @@ let configuration = "Release"
 
 // Pattern specifying assemblies to be tested using NUnit
 let testAssemblies = "tests/**/bin" </> configuration </> "*Tests*.dll"
-
-// Git configuration (used for publishing documentation in gh-pages branch)
-// The profile where the project is posted
-let gitOwner = "##GitHome##"
-let gitHome = sprintf "%s/%s" "##GitUrl##" gitOwner
-
-// The name of the project on GitHub
-let gitName = "##GitName##"
-
-// The url for the raw files hosted
-let gitRaw = environVarOrDefault "gitRaw" "##GitRawUrl##/##GitHome##"
 
 // --------------------------------------------------------------------------------------
 // END TODO: The rest of the file includes standard build steps
@@ -150,25 +128,6 @@ Target "RunTests" (fun _ ->
             DisableShadowCopy = true
             TimeOut = TimeSpan.FromMinutes 20.
             OutputFile = "TestResults.xml" })
-)
-
-
-// --------------------------------------------------------------------------------------
-// Build a NuGet package
-
-Target "NuGet" (fun _ ->
-    Paket.Pack(fun p ->
-        { p with
-            OutputPath = "bin"
-            Version = release.NugetVersion
-            ReleaseNotes = toLines release.Notes})
-)
-
-Target "PublishNuget" (fun _ ->
-    Paket.Push(fun p ->
-        { p with
-            PublishUrl = "https://www.nuget.org"
-            WorkingDir = "bin" })
 )
 
 
@@ -306,37 +265,11 @@ Target "AddLangDocs" (fun _ ->
 // --------------------------------------------------------------------------------------
 // Release Scripts
 
-#load "paket-files/build/fsharp/FAKE/modules/Octokit/Octokit.fsx"
-open Octokit
-
 Target "Release" (fun _ ->
-    let user =
-        match getBuildParam "github-user" with
-        | s when not (String.IsNullOrWhiteSpace s) -> s
-        | _ -> getUserInput "Username: "
-    let pw =
-        match getBuildParam "github-pw" with
-        | s when not (String.IsNullOrWhiteSpace s) -> s
-        | _ -> getUserPassword "Password: "
-    let remote =
-        Git.CommandHelper.getGitResult "" "remote -v"
-        |> Seq.filter (fun (s: string) -> s.EndsWith("(push)"))
-        |> Seq.tryFind (fun (s: string) -> s.Contains(gitOwner + "/" + gitName))
-        |> function None -> gitHome + "/" + gitName | Some (s: string) -> s.Split().[0]
-
     StageAll ""
     Git.Commit.Commit "" (sprintf "Bump version to %s" release.NugetVersion)
-    Branches.pushBranch "" remote (Information.getBranchName "")
 
     Branches.tag "" release.NugetVersion
-    Branches.pushTag "" remote release.NugetVersion
-
-    // release on github
-    createClient user pw
-    |> createDraft gitOwner gitName release.NugetVersion (release.SemVer.PreRelease <> None) release.Notes
-    // TODO: |> uploadFile "PATH_TO_FILE"
-    |> releaseDraft
-    |> Async.RunSynchronously
 )
 
 Target "BuildPackage" DoNothing
@@ -350,24 +283,22 @@ Target "All" DoNothing
   ==> "Build"
   ==> "CopyBinaries"
   ==> "RunTests"
-  ==> "GenerateReferenceDocs"
-  ==> "GenerateDocs"
-  ==> "NuGet"
+//  ==> "GenerateReferenceDocs"
+//  ==> "GenerateDocs"
   ==> "BuildPackage"
   ==> "All"
 
-"GenerateHelp"
-  ==> "GenerateReferenceDocs"
-  ==> "GenerateDocs"
-
-"GenerateHelpDebug"
-  ==> "KeepRunning"
+//"GenerateHelp"
+//  ==> "GenerateReferenceDocs"
+//  ==> "GenerateDocs"
+//
+//"GenerateHelpDebug"
+//  ==> "KeepRunning"
 
 "Clean"
   ==> "Release"
 
 "BuildPackage"
-  ==> "PublishNuget"
   ==> "Release"
 
 RunTargetOrDefault "All"
