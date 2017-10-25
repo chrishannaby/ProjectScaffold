@@ -283,17 +283,17 @@ Target "All" DoNothing
   ==> "Build"
   ==> "CopyBinaries"
   ==> "RunTests"
-  ==> "GenerateReferenceDocs"
-  ==> "GenerateDocs"
+//  ==> "GenerateReferenceDocs"
+//  ==> "GenerateDocs"
   ==> "BuildPackage"
   ==> "All"
 
-"GenerateHelp"
-  ==> "GenerateReferenceDocs"
-  ==> "GenerateDocs"
-
-"GenerateHelpDebug"
-  ==> "KeepRunning"
+//"GenerateHelp"
+//  ==> "GenerateReferenceDocs"
+//  ==> "GenerateDocs"
+//
+//"GenerateHelpDebug"
+//  ==> "KeepRunning"
 
 "Clean"
   ==> "Release"
