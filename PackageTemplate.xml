@@ -1,0 +1,25 @@
+<install>
+	<vendor>Ubisense</vendor>
+	<package></package>
+	<services>
+		<value>
+			<name></name>
+			<version>
+				<major_>0</major_>
+				<minor_>0</minor_>
+				<build_>0</build_>
+			</version>
+			<level>Site</level>
+			<programs>
+				<key>i586_windows_1.3</key>
+                                <value></value>
+			</programs>
+			<libraries>
+				<key>i586_windows_1.3</key>
+                                <value>
+				</value>
+			</libraries>
+                        <data></data>
+		</value>
+	</services>
+</install>

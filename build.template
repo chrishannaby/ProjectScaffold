@@ -20,7 +20,6 @@ open System.Diagnostics
 // Information about the project are used
 //  - for version and project name in generated AssemblyInfo file
 //  - to run tests
-//  - for documentation, you also need to edit info in "docsrc/tools/generate.fsx"
 
 // The name of the project
 // (used by attributes in AssemblyInfo, name of a NuGet package and directory in 'src')
@@ -29,6 +28,14 @@ let project = "##ProjectName##"
 // Short summary of the project
 // (used as description in AssemblyInfo and as a short summary for NuGet package)
 let summary = "##Summary##"
+
+// Package name
+// (used for the name of the Ubisense package)
+let packageName = "##PackageName##"
+
+// Service name
+// (used as the name of the Ubisense service)
+let serviceName = "##ServiceName##"
 
 // File system information
 let solutionFile  = "##ProjectName##.sln"
@@ -85,13 +92,48 @@ Target "AssemblyInfo" (fun _ ->
 )
 
 // Copies binaries from default VS location to expected bin folder
-// But keeps a subdirectory structure for each project in the
-// src folder to support multiple project outputs
 Target "CopyBinaries" (fun _ ->
     !! "src/**/*.??proj"
     -- "src/**/*.shproj"
-    |>  Seq.map (fun f -> ((System.IO.Path.GetDirectoryName f) </> "bin" </> configuration, "bin" </> (System.IO.Path.GetFileNameWithoutExtension f)))
-    |>  Seq.iter (fun (fromDir, toDir) -> CopyDir toDir fromDir (fun _ -> true))
+    |> Seq.map (fun f -> (System.IO.Path.GetDirectoryName f) </> "bin" </> configuration)
+    |> Seq.iter (fun f -> CopyDir ("bin" </> "i586_windows_1.3") f (fun _ -> true))
+    )
+
+// --------------------------------------------------------------------------------------
+// Creates xml file for installation through service manager
+
+Target "BuildPackage" (fun _ ->
+    CopyFile "bin" "PackageTemplate.xml"
+    let packageFile = "bin/PackageTemplate.xml"
+    let doc = XMLHelper.XMLDoc <| File.ReadAllText packageFile
+    (doc.SelectSingleNode "/install/package").InnerText <- packageName
+    (doc.SelectSingleNode "/install/services/value/name").InnerText <- serviceName
+    // Set version number from Release notes
+    let v = release.SemVer
+    let version = doc.SelectSingleNode "/install/services/value/version"
+    (version.SelectSingleNode "major_").InnerText <- string v.Major
+    (version.SelectSingleNode "minor_").InnerText <- string v.Minor
+    (version.SelectSingleNode "build_").InnerText <- string v.Patch
+    // Fill program node with exe file
+    let program =
+        !! "bin/i586_windows_1.3/*.exe"
+        |> Seq.head
+        |> System.IO.Path.GetFileName
+    (doc.SelectSingleNode "/install/services/value/programs/value").InnerText <- program
+    // Fill libries node with all other files
+    let librariesNode = (doc.SelectSingleNode "/install/services/value/libraries/value")
+    let libraries =
+        !! "bin/i586_windows_1.3/*"
+        -- "bin/i586_windows_1.3/*.exe"
+        |> Seq.map System.IO.Path.GetFileName
+        |> Seq.iter (fun f ->
+                let element = doc.CreateElement "value"
+                element.InnerText <- f
+                librariesNode.AppendChild element |> ignore
+                )
+    doc.Save(packageFile)
+    let packageFileName = packageName.Replace(" ", "") + ".xml"
+    Rename ("bin" </> packageFileName) "bin/PackageTemplate.xml"
 )
 
 // --------------------------------------------------------------------------------------
@@ -106,7 +148,7 @@ let vsProjProps =
 
 Target "Clean" (fun _ ->
     !! solutionFile |> MSBuildReleaseExt "" vsProjProps "Clean" |> ignore
-    CleanDirs ["bin"; "temp"; "docs"]
+    CleanDirs ["bin"; "temp"]
 )
 
 // --------------------------------------------------------------------------------------
@@ -130,138 +172,6 @@ Target "RunTests" (fun _ ->
             OutputFile = "TestResults.xml" })
 )
 
-
-// --------------------------------------------------------------------------------------
-// Generate the documentation
-
-
-let fakePath = "packages" </> "build" </> "FAKE" </> "tools" </> "FAKE.exe"
-let fakeStartInfo script workingDirectory args fsiargs environmentVars =
-    (fun (info: ProcessStartInfo) ->
-        info.FileName <- System.IO.Path.GetFullPath fakePath
-        info.Arguments <- sprintf "%s --fsiargs -d:FAKE %s \"%s\"" args fsiargs script
-        info.WorkingDirectory <- workingDirectory
-        let setVar k v =
-            info.EnvironmentVariables.[k] <- v
-        for (k, v) in environmentVars do
-            setVar k v
-        setVar "MSBuild" msBuildExe
-        setVar "GIT" Git.CommandHelper.gitPath
-        setVar "FSI" fsiPath)
-
-/// Run the given buildscript with FAKE.exe
-let executeFAKEWithOutput workingDirectory script fsiargs envArgs =
-    let exitCode =
-        ExecProcessWithLambdas
-            (fakeStartInfo script workingDirectory "" fsiargs envArgs)
-            TimeSpan.MaxValue false ignore ignore
-    System.Threading.Thread.Sleep 1000
-    exitCode
-
-// Documentation
-let buildDocumentationTarget fsiargs target =
-    trace (sprintf "Building documentation (%s), this could take some time, please wait..." target)
-    let exit = executeFAKEWithOutput "docsrc/tools" "generate.fsx" fsiargs ["target", target]
-    if exit <> 0 then
-        failwith "generating reference documentation failed"
-    ()
-
-Target "GenerateReferenceDocs" (fun _ ->
-    buildDocumentationTarget "-d:RELEASE -d:REFERENCE" "Default"
-)
-
-let generateHelp' fail debug =
-    let args =
-        if debug then "--define:HELP"
-        else "--define:RELEASE --define:HELP"
-    try
-        buildDocumentationTarget args "Default"
-        traceImportant "Help generated"
-    with
-    | e when not fail ->
-        traceImportant "generating help documentation failed"
-
-let generateHelp fail =
-    generateHelp' fail false
-
-Target "GenerateHelp" (fun _ ->
-    DeleteFile "docsrc/content/release-notes.md"
-    CopyFile "docsrc/content/" "RELEASE_NOTES.md"
-    Rename "docsrc/content/release-notes.md" "docsrc/content/RELEASE_NOTES.md"
-
-    DeleteFile "docsrc/content/license.md"
-    CopyFile "docsrc/content/" "LICENSE.txt"
-    Rename "docsrc/content/license.md" "docsrc/content/LICENSE.txt"
-
-    generateHelp true
-)
-
-Target "GenerateHelpDebug" (fun _ ->
-    DeleteFile "docsrc/content/release-notes.md"
-    CopyFile "docsrc/content/" "RELEASE_NOTES.md"
-    Rename "docsrc/content/release-notes.md" "docsrc/content/RELEASE_NOTES.md"
-
-    DeleteFile "docsrc/content/license.md"
-    CopyFile "docsrc/content/" "LICENSE.txt"
-    Rename "docsrc/content/license.md" "docsrc/content/LICENSE.txt"
-
-    generateHelp' true true
-)
-
-Target "KeepRunning" (fun _ ->
-    use watcher = !! "docsrc/content/**/*.*" |> WatchChanges (fun changes ->
-         generateHelp' true true
-    )
-
-    traceImportant "Waiting for help edits. Press any key to stop."
-
-    System.Console.ReadKey() |> ignore
-
-    watcher.Dispose()
-)
-
-Target "GenerateDocs" DoNothing
-
-let createIndexFsx lang =
-    let content = """(*** hide ***)
-// This block of code is omitted in the generated HTML documentation. Use
-// it to define helpers that you do not want to show in the documentation.
-#I "../../../bin"
-
-(**
-F# Project Scaffold ({0})
-=========================
-*)
-"""
-    let targetDir = "docsrc/content" </> lang
-    let targetFile = targetDir </> "index.fsx"
-    ensureDirectory targetDir
-    System.IO.File.WriteAllText(targetFile, System.String.Format(content, lang))
-
-Target "AddLangDocs" (fun _ ->
-    let args = System.Environment.GetCommandLineArgs()
-    if args.Length < 4 then
-        failwith "Language not specified."
-
-    args.[3..]
-    |> Seq.iter (fun lang ->
-        if lang.Length <> 2 && lang.Length <> 3 then
-            failwithf "Language must be 2 or 3 characters (ex. 'de', 'fr', 'ja', 'gsw', etc.): %s" lang
-
-        let templateFileName = "template.cshtml"
-        let templateDir = "docsrc/tools/templates"
-        let langTemplateDir = templateDir </> lang
-        let langTemplateFileName = langTemplateDir </> templateFileName
-
-        if System.IO.File.Exists(langTemplateFileName) then
-            failwithf "Documents for specified language '%s' have already been added." lang
-
-        ensureDirectory langTemplateDir
-        Copy langTemplateDir [ templateDir </> templateFileName ]
-
-        createIndexFsx lang)
-)
-
 // --------------------------------------------------------------------------------------
 // Release Scripts
 
@@ -272,33 +182,17 @@ Target "Release" (fun _ ->
     Branches.tag "" release.NugetVersion
 )
 
-Target "BuildPackage" DoNothing
-
 // --------------------------------------------------------------------------------------
 // Run all targets by default. Invoke 'build <Target>' to override
 
 Target "All" DoNothing
 
 "AssemblyInfo"
+  ==> "Clean"
   ==> "Build"
   ==> "CopyBinaries"
-  ==> "RunTests"
-//  ==> "GenerateReferenceDocs"
-//  ==> "GenerateDocs"
   ==> "BuildPackage"
+  ==> "Release"
   ==> "All"
-
-//"GenerateHelp"
-//  ==> "GenerateReferenceDocs"
-//  ==> "GenerateDocs"
-//
-//"GenerateHelpDebug"
-//  ==> "KeepRunning"
-
-"Clean"
-  ==> "Release"
-
-"BuildPackage"
-  ==> "Release"
 
 RunTargetOrDefault "All"

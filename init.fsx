@@ -35,7 +35,7 @@ if File.Exists("CheckFSharpInstallation.fsproj") then
     traceError "then run the build script again."
     failwith "Build script aborted: please install F# and try again."
 
-let dirsWithProjects = ["src";"tests";"docsrc/content"]
+let dirsWithProjects = ["src";"tests"]
                        |> List.map (fun d -> directoryInfo (__SOURCE_DIRECTORY__ @@ d))
 
 // special funtions
@@ -96,11 +96,9 @@ let print msg =
 print """
 # Project Scaffold Init Script
 # Please answer a few questions and we will generate
-# two files:
+# these files:
 #
 # build.fsx               This will be your build script
-# docsrc/tools/generate.fsx This script will generate your
-#                         documentation
 #
 # NOTE: Aside from the Project Name, you may leave any
 # of these blank, but you will need to change the defaults
@@ -115,6 +113,8 @@ let promptAndNormalizeUrlFor = promptAndNormalizeFor normalizeUrl
 let vars = Dictionary<string,string option>()
 vars.["##ProjectName##"] <- promptForNoSpaces "Project Name (used for solution/project files)"
 vars.["##Summary##"]     <- promptFor "Summary (a short description)"
+vars.["##PackageName##"] <- promptFor "Package Name (used for Ubisense package)"
+vars.["##ServiceName##"] <- promptFor "Service Name (usually the same as Project Name but with spaces between words)"
 
 let wantGit     = if inCI 
                     then false
@@ -196,7 +196,7 @@ let rec filesToReplace dir = seq {
 |> List.map replaceContent
 |> List.iter print
 
-//Replace tokens in build template
+//Replace tokens in templates
 let generate templatePath generatedFilePath =
   failfUnlessExists templatePath "Cannot find template %s" (templatePath |> Path.GetFullPath)
 
@@ -204,13 +204,14 @@ let generate templatePath generatedFilePath =
     File.ReadAllLines(templatePath) |> Array.toSeq
     |> replace "##ProjectName##" projectName
     |> replaceWithVarOrMsg "##Summary##" "Project has no summmary; update build.fsx"
+    |> replaceWithVarOrMsg "##PackageName##" "No Package Name; update build.fsx"
+    |> replaceWithVarOrMsg "##ServiceName##" "No Service Name; update build.fsx"
 
   File.WriteAllLines(generatedFilePath, newContent)
   File.Delete(templatePath)
   print (sprintf "# Generated %s" generatedFilePath)
 
 generate (localFile "build.template") (localFile "build.fsx")
-generate (localFile "docsrc/tools/generate.template") (localFile "docsrc/tools/generate.fsx")
 
 //Handle source control
 let isGitRepo () =
@@ -230,10 +231,10 @@ let setRemote (name,url) workingDir =
     | x -> traceException x
 
 let isRemote (name,url) value =
-  let remote = getRegEx <| sprintf @"^%s\s+%s\s+\(push\)$" name url
+  let remote = getRegEx <| sprintf @"^%s\s+(https?:\/\/|git@)github.com(\/|:)%s\s+\(push\)$" name url
   remote.IsMatch value
 
-let isScaffoldRemote = isRemote ("origin","http://github.com/fsprojects/ProjectScaffold.git")
+let isScaffoldRemote = isRemote ("origin","chrishannaby/ProjectScaffold.git")
 
 let hasScaffoldOrigin () =
   try
