@@ -175,6 +175,14 @@ Target "RunTests" (fun _ ->
 // --------------------------------------------------------------------------------------
 // Release Scripts
 
+Target "Zip" (fun _ ->
+        Fake.FileSystemHelper.ensureDirectory "releases"
+        let v = release.SemVer
+        CopyFile "bin" "RELEASE_NOTES.md"
+        !! "bin/**"
+        |> ZipHelper.Zip "bin" (sprintf "releases/%s_v%i_%i_%i.zip" project v.Major v.Minor v.Patch)
+)
+
 Target "Release" (fun _ ->
     StageAll ""
     Git.Commit.Commit "" (sprintf "Bump version to %s" release.NugetVersion)
@@ -192,6 +200,7 @@ Target "Release" (fun _ ->
   ==> "BuildPackage"
 
 "BuildPackage"
+  ==> "Zip"
   ==> "Release"
 
 RunTargetOrDefault "BuildPackage"
