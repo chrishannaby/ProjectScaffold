@@ -29,14 +29,6 @@ let project = "##ProjectName##"
 // (used as description in AssemblyInfo and as a short summary for NuGet package)
 let summary = "##Summary##"
 
-// Package name
-// (used for the name of the Ubisense package)
-let packageName = "##PackageName##"
-
-// Service name
-// (used as the name of the Ubisense service)
-let serviceName = "##ServiceName##"
-
 // File system information
 let solutionFile  = "##ProjectName##.sln"
 
@@ -92,49 +84,14 @@ Target "AssemblyInfo" (fun _ ->
 )
 
 // Copies binaries from default VS location to expected bin folder
+// But keeps a subdirectory structure for each project in the
+// src folder to support multiple project outputs
 Target "CopyBinaries" (fun _ ->
-    !! "src/**/*.??proj"
-    -- "src/**/*.shproj"
-    |> Seq.map (fun f -> (System.IO.Path.GetDirectoryName f) </> "bin" </> configuration)
-    |> Seq.iter (fun f -> CopyDir ("bin" </> "i586_windows_1.3") f (fun _ -> true))
+        !! "src/**/*.??proj"
+        -- "src/**/*.shproj"
+        |>  Seq.map (fun f -> ((System.IO.Path.GetDirectoryName f) </> "bin" </> configuration, "bin" </> (System.IO.Path.GetFileNameWithoutExtension f)))
+        |>  Seq.iter (fun (fromDir, toDir) -> CopyDir toDir fromDir (fun _ -> true))
     )
-
-// --------------------------------------------------------------------------------------
-// Creates xml file for installation through service manager
-
-Target "BuildPackage" (fun _ ->
-    CopyFile "bin" "PackageTemplate.xml"
-    let packageFile = "bin/PackageTemplate.xml"
-    let doc = XMLHelper.XMLDoc <| File.ReadAllText packageFile
-    (doc.SelectSingleNode "/install/package").InnerText <- packageName
-    (doc.SelectSingleNode "/install/services/value/name").InnerText <- serviceName
-    // Set version number from Release notes
-    let v = release.SemVer
-    let version = doc.SelectSingleNode "/install/services/value/version"
-    (version.SelectSingleNode "major_").InnerText <- string v.Major
-    (version.SelectSingleNode "minor_").InnerText <- string v.Minor
-    (version.SelectSingleNode "build_").InnerText <- string v.Patch
-    // Fill program node with exe file
-    let program =
-        !! "bin/i586_windows_1.3/*.exe"
-        |> Seq.head
-        |> System.IO.Path.GetFileName
-    (doc.SelectSingleNode "/install/services/value/programs/value").InnerText <- program
-    // Fill libries node with all other files
-    let librariesNode = (doc.SelectSingleNode "/install/services/value/libraries/value")
-    let libraries =
-        !! "bin/i586_windows_1.3/*"
-        -- "bin/i586_windows_1.3/*.exe"
-        |> Seq.map System.IO.Path.GetFileName
-        |> Seq.iter (fun f ->
-                let element = doc.CreateElement "value"
-                element.InnerText <- f
-                librariesNode.AppendChild element |> ignore
-                )
-    doc.Save(packageFile)
-    let packageFileName = packageName.Replace(" ", "") + ".xml"
-    Rename ("bin" </> packageFileName) "bin/PackageTemplate.xml"
-)
 
 // --------------------------------------------------------------------------------------
 // Clean build results
@@ -159,6 +116,23 @@ Target "Build" (fun _ ->
     |> MSBuildReleaseExt "" vsProjProps "Rebuild"
     |> ignore
 )
+// --------------------------------------------------------------------------------------
+// Build a NuGet package
+
+Target "NuGet" (fun _ ->
+    Paket.Pack(fun p ->
+        { p with
+            OutputPath = "bin"
+            Version = release.NugetVersion
+            ReleaseNotes = toLines release.Notes})
+)
+
+Target "PublishNuget" (fun _ ->
+    let package = !! "bin/*.nupkg" |> Seq.head
+    let arguments = sprintf "add %s -source C:\Nuget" package
+    if not (Shell.Exec("nuget.exe", arguments) = 0)
+        then failwith "Could not publish Nuget Package"
+)
 
 // --------------------------------------------------------------------------------------
 // Run the unit tests using test runner
@@ -175,14 +149,6 @@ Target "RunTests" (fun _ ->
 // --------------------------------------------------------------------------------------
 // Release Scripts
 
-Target "Zip" (fun _ ->
-        Fake.FileSystemHelper.ensureDirectory "releases"
-        let v = release.SemVer
-        CopyFile "bin" "RELEASE_NOTES.md"
-        !! "bin/**"
-        |> ZipHelper.Zip "bin" (sprintf "releases/%s_v%i_%i_%i.zip" project v.Major v.Minor v.Patch)
-)
-
 Target "Release" (fun _ ->
     StageAll ""
     Git.Commit.Commit "" (sprintf "Bump version to %s" release.NugetVersion)
@@ -197,10 +163,10 @@ Target "Release" (fun _ ->
   ==> "Clean"
   ==> "Build"
   ==> "CopyBinaries"
-  ==> "BuildPackage"
+  ==> "Nuget"
 
-"BuildPackage"
-  ==> "Zip"
+"Nuget"
+  ==> "PublishNuget"
   ==> "Release"
 
-RunTargetOrDefault "BuildPackage"
+RunTargetOrDefault "Nuget"

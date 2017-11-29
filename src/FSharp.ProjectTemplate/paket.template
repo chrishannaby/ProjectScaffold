@@ -1,0 +1,9 @@
+type project
+title
+    ##ProjectName##
+authors
+    Chris Hannaby
+owners
+    Ubisense
+summary
+    ##Summary##

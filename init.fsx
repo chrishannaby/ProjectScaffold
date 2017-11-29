@@ -113,8 +113,6 @@ let promptAndNormalizeUrlFor = promptAndNormalizeFor normalizeUrl
 let vars = Dictionary<string,string option>()
 vars.["##ProjectName##"] <- promptForNoSpaces "Project Name (used for solution/project files)"
 vars.["##Summary##"]     <- promptFor "Summary (a short description)"
-vars.["##PackageName##"] <- promptFor "Package Name (used for Ubisense package)"
-vars.["##ServiceName##"] <- promptFor "Service Name (usually the same as Project Name but with spaces between words)"
 
 let wantGit     = if inCI 
                     then false
@@ -188,6 +186,7 @@ let rec filesToReplace dir = seq {
   yield! Directory.GetFiles(dir, "*.cs")
   yield! Directory.GetFiles(dir, "*.xaml")
   yield! Directory.GetFiles(dir, "*.fsx")
+  yield! Directory.GetFiles(dir, "paket.template")
   yield! Directory.EnumerateDirectories(dir) |> Seq.collect filesToReplace
 }
 
@@ -204,8 +203,6 @@ let generate templatePath generatedFilePath =
     File.ReadAllLines(templatePath) |> Array.toSeq
     |> replace "##ProjectName##" projectName
     |> replaceWithVarOrMsg "##Summary##" "Project has no summmary; update build.fsx"
-    |> replaceWithVarOrMsg "##PackageName##" "No Package Name; update build.fsx"
-    |> replaceWithVarOrMsg "##ServiceName##" "No Service Name; update build.fsx"
 
   File.WriteAllLines(generatedFilePath, newContent)
   File.Delete(templatePath)
